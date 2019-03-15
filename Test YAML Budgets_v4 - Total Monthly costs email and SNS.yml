@@ -1,0 +1,115 @@
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Total Monthly Budget Configuration
+        Parameters:
+          - TotalMonthlyBudgetLimitAmount
+      - Label:
+          default: Alert Recipients
+        Parameters:
+          - NotificationEmail
+          - TopicName
+
+    ParameterLabels:
+      TotalMonthlyBudgetLimitAmount:
+        default: Total Monthly Budgeted Amount
+      NotificationEmail:
+        default: Notification Emails (optional)
+      TopicName:
+        default: Simple Notification Service Topic (optional)
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Default: 'customer email addresses [up to 10]'
+    Description: Email address for budget alerts
+  TopicName:
+    Type: String
+    Default: CloudFormation-BudgetSNSTopic
+    Description: Name of SNS topic
+  TotalMonthlyBudgetLimitAmount:
+    Type: Number
+    Description: The total monthly budget (in USD)
+
+Conditions:
+  CreateSubscription: !Not
+      - !Equals
+        - !Ref NotificationEmail
+        - ''
+
+Resources:
+  BudgetTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref TopicName
+      DisplayName: AWS Budgets Notification Topic
+
+  BudgetTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref BudgetTopic
+      PolicyDocument:
+        Statement:
+          - Sid: AWSBudgetsSNSPolicy
+            Action:
+              - sns:Publish
+            Effect: Allow
+            Principal:
+              Service:
+                - budgets.amazonaws.com
+            Resource: !Ref BudgetTopic
+
+  TotalMonthlyBudget:
+    Type: 'AWS::Budgets::Budget'
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::AccountId} Total Monthly Budget'
+        BudgetLimit:
+          Amount: !Ref TotalMonthlyBudgetLimitAmount
+          Unit: USD
+        TimeUnit: MONTHLY
+        BudgetType: COST
+
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
